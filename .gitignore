@@ -1,4 +1,5 @@
 .cabal-sandbox
+*.#*
 *.sw[a-z]
 cabal.sandbox.config
 dist/

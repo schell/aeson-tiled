@@ -1,6 +1,6 @@
 module Main where
 
-import Lib
+import Data.Aeson.Tiled
 
 main :: IO ()
-main = someFunc
+main = print =<< loadTiledmap "example.json"

@@ -1,22 +1,33 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE OverloadedStrings #-}
-module Data.Aeson.Tiled.Types where
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
+module Data.Aeson.Tiled
+  ( -- * Tiled map editor types, their aeson instances and map loading
+    module Data.Aeson.Tiled
+    -- * Re-exports for working with Tiled types
+  , module Data.Map
+  , module Data.Vector
+  ) where
 
-import           Data.Aeson       hiding (Object)
-import qualified Data.Aeson       as A
-import           Data.Aeson.Types (typeMismatch)
-import           Data.Map         (Map)
-import           Data.Text        (Text)
-import           Data.Vector      (Vector)
-import           GHC.Generics     (Generic)
+import           Control.Applicative        ((<|>))
+import           Control.Monad              (forM)
+import           Data.Aeson                 hiding (Object)
+import qualified Data.Aeson                 as A
+import           Data.Aeson.Types           (Parser, typeMismatch)
+import qualified Data.ByteString.Lazy.Char8 as C8
+import           Data.Map                   (Map)
+import qualified Data.Map                   as M
+import           Data.Text                  (Text)
+import           Data.Vector                (Vector)
+import           GHC.Generics               (Generic)
 
 
 newtype GlobalId = GlobalId { unGlobalId :: Int }
-                 deriving (Generic, Show)
+  deriving (Ord, Eq, Enum, Num, Generic, Show, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 
 newtype LocalId = LocalId { unLocalId :: Int }
-                deriving (Generic, Show)
+  deriving (Ord, Eq, Enum, Num, Generic, Show, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 
 data Object = Object { objectId         :: Int
@@ -51,6 +62,24 @@ data Object = Object { objectId         :: Int
                        -- ^ String key-value pairs
                      } deriving (Generic, Show)
 
+instance FromJSON Object where
+  parseJSON (A.Object o) = Object <$> o .: "id"
+                                  <*> o .: "width"
+                                  <*> o .: "height"
+                                  <*> o .: "name"
+                                  <*> o .: "type"
+                                  <*> o .: "properties"
+                                  <*> o .: "visible"
+                                  <*> o .: "x"
+                                  <*> o .: "y"
+                                  <*> o .: "rotation"
+                                  <*> o .: "gid"
+                                  <*> o .: "ellipse"
+                                  <*> o .: "polygon"
+                                  <*> o .: "polyline"
+                                  <*> o .: "text"
+  parseJSON invalid = typeMismatch "Object" invalid
+
 
 data Layer = Layer { layerWidth      :: Int
                      -- ^ Column count. Same as map width for fixed-size maps.
@@ -78,6 +107,21 @@ data Layer = Layer { layerWidth      :: Int
                      -- ^ “topdown” (default) or “index”. objectgroup only.
                    } deriving (Generic, Show)
 
+instance FromJSON Layer where
+  parseJSON (A.Object o) = Layer <$> (o .: "width"      <|> pure 0)
+                                 <*> (o .: "height"     <|> pure 0)
+                                 <*>  o .: "name"
+                                 <*>  o .: "type"
+                                 <*>  o .: "visible"
+                                 <*>  o .: "x"
+                                 <*>  o .: "y"
+                                 <*> (o .: "data"       <|> pure Nothing)
+                                 <*> (o .: "objects"    <|> pure Nothing)
+                                 <*> (o .: "properties" <|> pure mempty)
+                                 <*>  o .: "opacity"
+                                 <*> (o .: "draworder"  <|> pure "topdown")
+  parseJSON invalid = typeMismatch "Layer" invalid
+
 
 data Terrain = Terrain { terrainName :: String
                          -- ^ Name of terrain
@@ -85,18 +129,35 @@ data Terrain = Terrain { terrainName :: String
                          -- ^ Local ID of tile representing terrain
                        } deriving (Generic, Show)
 
+instance FromJSON Terrain where
+  parseJSON (A.Object o) = Terrain <$> o .: "name"
+                                   <*> o .: "tile"
+  parseJSON invalid = typeMismatch "Terrain" invalid
+
 
 data Frame = Frame { frameDuration :: Int
                    , frameTileId   :: LocalId
                    } deriving (Generic, Show)
 
+instance FromJSON Frame where
+  parseJSON (A.Object o) = Frame <$> o .: "duration"
+                                 <*> o .: "tileId"
+  parseJSON invalid = typeMismatch "Frame" invalid
+
 
 data Tile = Tile { tileId          :: LocalId
                  , tileProperties  :: Map Text Text
                  , tileImage       :: Maybe Value
-                 , tileObjectGroup :: Vector Object
-                 , tileAnimation   :: Vector Frame
+                 , tileObjectGroup :: Maybe (Vector Object)
+                 , tileAnimation   :: Maybe (Vector Frame)
                  } deriving (Generic, Show)
+
+instance FromJSON Tile where
+  parseJSON (A.Object o) = Tile 0 <$> (o .: "properties"  <|> pure mempty)
+                                  <*> (o .: "image"       <|> pure Nothing)
+                                  <*> (o .: "objectGroup" <|> pure mempty)
+                                  <*> (o .: "animation"   <|> pure mempty)
+  parseJSON invalid = typeMismatch "Tile" invalid
 
 
 data Tileset = Tileset { tilesetFirstgid       :: GlobalId
@@ -129,9 +190,39 @@ data Tileset = Tileset { tilesetFirstgid       :: GlobalId
                          -- ^ The number of tile columns in the tileset
                        , tilesetTilecount      :: Int
                          -- ^ The number of tiles in this tileset
-                       , tilesetTiles          :: Map GlobalId (Map LocalId (Int, Int, Int, Int))
-                         -- ^ Gid-indexed Tiles (optional)
+                       , tilesetTiles          :: Map LocalId Tile
+                         -- ^ Tiles (optional)
                        } deriving (Generic, Show)
+
+newtype TransitiveTilesetMap = TransitiveTilesetMap (Map LocalId Value)
+  deriving (Show, Eq, Generic, FromJSON)
+
+parseTiles :: A.Object -> Parser (Map LocalId Tile)
+parseTiles o = do
+  TransitiveTilesetMap localId2Value <- o .: "tiles"
+  localIdAndTiles <- forM (M.toList localId2Value) $ \(lid, val) -> do
+    tile <- parseJSON val
+    return (lid, tile{ tileId = lid })
+  return $ M.fromList localIdAndTiles
+
+instance FromJSON Tileset where
+  parseJSON (A.Object o) = Tileset <$>  o .: "firstgid"
+                                   <*>  o .: "image"
+                                   <*>  o .: "name"
+                                   <*>  o .: "tilewidth"
+                                   <*>  o .: "tileheight"
+                                   <*>  o .: "imagewidth"
+                                   <*>  o .: "imageheight"
+                                   <*> (o .: "properties"     <|> pure mempty)
+                                   <*> (o .: "propertytypes"  <|> pure mempty)
+                                   <*>  o .: "margin"
+                                   <*>  o .: "spacing"
+                                   <*> (o .: "tileproperties" <|> pure mempty)
+                                   <*> (o .: "terrains"       <|> pure mempty)
+                                   <*>  o .: "columns"
+                                   <*>  o .: "tilecount"
+                                   <*> (parseTiles o          <|> pure mempty)
+  parseJSON invalid = typeMismatch "Tileset" invalid
 
 
 -- | The full monty.
@@ -153,7 +244,7 @@ data Tiledmap = Tiledmap { tiledmapVersion         :: Float
                            -- ^ Array of Layers
                          , tiledmapTilesets        :: Vector Tileset
                            -- ^ Array of Tilesets
-                         , tiledmapBackgroundcolor :: String
+                         , tiledmapBackgroundcolor :: Maybe String
                            -- ^ Hex-formatted color (#RRGGBB or #AARRGGBB) (optional)
                          , tiledmapRenderorder     :: String
                            -- ^ Rendering direction (orthogonal maps only)
@@ -165,128 +256,22 @@ data Tiledmap = Tiledmap { tiledmapVersion         :: Float
 
 
 instance FromJSON Tiledmap where
-  parseJSON (A.Object o) = Tiledmap <$> o .: "version"
-                                    <*> o .: "tiledversion"
-                                    <*> o .: "width"
-                                    <*> o .: "height"
-                                    <*> o .: "tilewidth"
-                                    <*> o .: "tileheight"
-                                    <*> o .: "orientation"
-                                    <*> o .: "layers"
-                                    <*> o .: "tilesets"
-                                    <*> o .: "backgroundcolor"
-                                    <*> o .: "renderorder"
-                                    <*> o .: "properties"
-                                    <*> o .: "nextobjectid"
+  parseJSON (A.Object o) = Tiledmap <$>  o .: "version"
+                                    <*>  o .: "tiledversion"
+                                    <*>  o .: "width"
+                                    <*>  o .: "height"
+                                    <*>  o .: "tilewidth"
+                                    <*>  o .: "tileheight"
+                                    <*>  o .: "orientation"
+                                    <*>  o .: "layers"
+                                    <*>  o .: "tilesets"
+                                    <*> (o .: "backgroundcolor" <|> pure Nothing)
+                                    <*>  o .: "renderorder"
+                                    <*> (o .: "properties"      <|> pure mempty)
+                                    <*>  o .: "nextobjectid"
   parseJSON invalid = typeMismatch "Tiledmap" invalid
 
 
-
----- | Orientations
---data MapOrientation = Orthogonal | Isometric deriving (Show, Eq)
---
----- | Properties
---type Properties = [(String, String)]
---
----- | A tiled map.
---data Tiledmap = Tiledmap
---         { mapPath             :: FilePath -- ^ The file path of the map file.
---         , mapOrientation      :: MapOrientation
---         , mapWidth, mapHeight :: Int
---         , mapTileWidth        :: Int
---         , mapTileHeight       :: Int
---         , mapProperties       :: Properties
---         , mapTilesets         :: [Tileset]
---         , mapLayers           :: [Layer]
---         } deriving (Show, Eq)
---
----- | A set of tiles that can be used.
---data Tileset = Tileset
---             { tsName                    :: String
---             , tsInitialGid              :: Word32
---             , tsTileWidth, tsTileHeight :: Int
---             , tsTileCount               :: Int
---             , tsSpacing, tsMargin       :: Int
---             , tsImages                  :: [Image] -- ^ Multiple images not
---                                                    -- yet supported in tiled.
---             , tsProperties              :: Properties
---             , tsTiles                   :: [Tile]
---             , tsColumns                 :: Int
---             } deriving (Show, Eq)
---
----- | One frame of an animation.
---data Frame = Frame { frameTileId   :: Word32
---                   -- ^ The local ID of a tile within the parent TileSet.
---                   , frameDuration :: Int
---                   -- ^ How long (in milliseconds) this frame should be
---                   -- displayed before advancing to the next frame.
---                   } deriving (Show, Eq, Ord)
---
----- | Contains a list of animation frames.
---newtype Animation = Animation { animationFrames :: [Frame] }
---                  deriving (Show, Eq, Ord)
---
----- | A tile as defined in a TileSet.
---data Tile = Tile { tileId          :: Word32
---                 -- ^ The local tile ID within its tileset.
---                 -- TODO: Add terrain and probability
---                 , tileProperties  :: Properties
---                 , tileImage       :: Maybe Image
---                 , tileObjectGroup :: [Object]
---                 , tileAnimation   :: Maybe Animation
---                 } deriving (Show, Eq)
---
----- | An image containing tiles.
---data Image = Image
---           { iSource         :: FilePath
---           , iTrans          :: Maybe (Word8, Word8, Word8)
---           , iWidth, iHeight :: Int
---           } deriving (Show, Eq)
---
----- | An object, usable for stuff not repetitively aligned on a grid.
---data Object = Object
---            { objectName                :: Maybe String
---            , objectType                :: Maybe String
---            , objectProperties          :: Properties
---            , objectX, objectY          :: Double
---            , objectWidth, objectHeight :: Maybe Double
---            , objectGid                 :: Maybe Word32
---            , objectPolygon             :: Maybe Polygon
---            , objectPolyline            :: Maybe Polyline
---            } deriving (Show, Eq)
---
----- | A polygon.
---newtype Polygon = Polygon [(Int, Int)] deriving (Show, Eq)
---
----- | A polyline.
---newtype Polyline = Polyline [(Int, Int)] deriving (Show, Eq)
---
----- | A single tile index as is stored in a layer.
---data TileIndex = TileIndex { tileIndexGid           :: Word32
---                           , tileIndexIsVFlipped    :: Bool
---                           , tileIndexIsHFlipped    :: Bool
---                           , tileIndexIsDiagFlipped :: Bool
---                           } deriving (Show, Eq, Ord)
---
----- | A collection of multidimensional tile data.
---type TileData = Vector (Vector (Maybe TileIndex))
---
----- | A layer's tile contents.
---data LayerContents = LayerContentsTiles   TileData
---                   | LayerContentsObjects [Object]
---                   | LayerContentsImage   Image
---                   deriving (Eq)
---
---instance Show LayerContents where
---    show (LayerContentsTiles _)      = "LayerContentsTiles "   ++ show "..."
---    show (LayerContentsObjects objs) = "LayerContentsObjects " ++ show objs
---    show (LayerContentsImage img)    = "LayerContentsImage "   ++ show img
---
----- | An entire layer of tiled data.
---data Layer = Layer { layerName       :: String
---                   , layerOpacity    :: Float
---                   , layerIsVisible  :: Bool
---                   , layerProperties :: Properties
---                   , layerOffset     :: (Int, Int)
---                   , layerContents   :: LayerContents
---                   } deriving (Show, Eq)
+-- | Load a Tiled map from the given 'FilePath'.
+loadTiledmap :: FilePath -> IO (Either String Tiledmap)
+loadTiledmap = fmap eitherDecode . C8.readFile
