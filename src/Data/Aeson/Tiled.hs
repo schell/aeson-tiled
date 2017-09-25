@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE RecordWildCards            #-}
 module Data.Aeson.Tiled
   ( -- * Tiled map editor types, their aeson instances and map loading
     module Data.Aeson.Tiled
@@ -60,7 +61,7 @@ data Object = Object { objectId         :: Int
                        -- ^ A list of x,y coordinates in pixels
                      , objectText       :: Map Text Text
                        -- ^ String key-value pairs
-                     } deriving (Generic, Show)
+                     } deriving (Eq, Generic, Show)
 
 instance FromJSON Object where
   parseJSON (A.Object o) = Object <$> o .: "id"
@@ -79,6 +80,24 @@ instance FromJSON Object where
                                   <*> o .: "polyline"
                                   <*> o .: "text"
   parseJSON invalid = typeMismatch "Object" invalid
+
+instance ToJSON Object where
+  toJSON Object{..} = object [ "id"         .= objectId
+                             , "width"      .= objectWidth
+                             , "height"     .= objectHeight
+                             , "name"       .= objectName
+                             , "type"       .= objectType
+                             , "properties" .= objectProperties
+                             , "visible"    .= objectVisible
+                             , "x"          .= objectX
+                             , "y"          .= objectY
+                             , "rotation"   .= objectRotation
+                             , "gid"        .= objectGid
+                             , "ellipse"    .= objectEllipse
+                             , "polygon"    .= objectPolygon
+                             , "polyline"   .= objectPolyline
+                             , "text"       .= objectText
+                             ]
 
 
 data Layer = Layer { layerWidth      :: Int
@@ -105,7 +124,7 @@ data Layer = Layer { layerWidth      :: Int
                      -- ^ Value between 0 and 1
                    , layerDraworder  :: String
                      -- ^ “topdown” (default) or “index”. objectgroup only.
-                   } deriving (Generic, Show)
+                   } deriving (Eq, Generic, Show)
 
 instance FromJSON Layer where
   parseJSON (A.Object o) = Layer <$> (o .: "width"      <|> pure 0)
@@ -122,27 +141,53 @@ instance FromJSON Layer where
                                  <*> (o .: "draworder"  <|> pure "topdown")
   parseJSON invalid = typeMismatch "Layer" invalid
 
+instance ToJSON Layer where
+  toJSON Layer{..} = object [ "width"      .= layerWidth
+                            , "height"     .= layerHeight
+                            , "name"       .= layerName
+                            , "type"       .= layerType
+                            , "visible"    .= layerVisible
+                            , "x"          .= layerX
+                            , "y"          .= layerY
+                            , "data"       .= layerData
+                            , "objects"    .= layerObjects
+                            , "properties" .= layerProperties
+                            , "opacity"    .= layerOpacity
+                            , "draworder"  .= layerDraworder
+                            ]
+
 
 data Terrain = Terrain { terrainName :: String
                          -- ^ Name of terrain
                        , terrainTile :: LocalId
                          -- ^ Local ID of tile representing terrain
-                       } deriving (Generic, Show)
+                       } deriving (Eq, Generic, Show)
 
 instance FromJSON Terrain where
   parseJSON (A.Object o) = Terrain <$> o .: "name"
                                    <*> o .: "tile"
   parseJSON invalid = typeMismatch "Terrain" invalid
 
+instance ToJSON Terrain where
+  toJSON Terrain{..} = object [ "name" .= terrainName
+                              , "tile" .= terrainTile
+                              ]
+
+
 
 data Frame = Frame { frameDuration :: Int
                    , frameTileId   :: LocalId
-                   } deriving (Generic, Show)
+                   } deriving (Eq, Generic, Show)
 
 instance FromJSON Frame where
   parseJSON (A.Object o) = Frame <$> o .: "duration"
                                  <*> o .: "tileId"
   parseJSON invalid = typeMismatch "Frame" invalid
+
+instance ToJSON Frame where
+  toJSON Frame{..} = object [ "duration" .= frameDuration
+                            , "tileId"   .= frameTileId
+                            ]
 
 
 data Tile = Tile { tileId          :: LocalId
@@ -150,7 +195,7 @@ data Tile = Tile { tileId          :: LocalId
                  , tileImage       :: Maybe Value
                  , tileObjectGroup :: Maybe (Vector Object)
                  , tileAnimation   :: Maybe (Vector Frame)
-                 } deriving (Generic, Show)
+                 } deriving (Eq, Generic, Show)
 
 instance FromJSON Tile where
   parseJSON (A.Object o) = Tile 0 <$> (o .: "properties"  <|> pure mempty)
@@ -158,6 +203,13 @@ instance FromJSON Tile where
                                   <*> (o .: "objectGroup" <|> pure mempty)
                                   <*> (o .: "animation"   <|> pure mempty)
   parseJSON invalid = typeMismatch "Tile" invalid
+
+instance ToJSON Tile where
+  toJSON Tile{..} = object [ "properties"   .= tileProperties
+                           , "image"        .= tileImage
+                           , "objectGroup"  .= tileObjectGroup
+                           , "animation"    .= tileAnimation
+                           ]
 
 
 data Tileset = Tileset { tilesetFirstgid       :: GlobalId
@@ -192,7 +244,7 @@ data Tileset = Tileset { tilesetFirstgid       :: GlobalId
                          -- ^ The number of tiles in this tileset
                        , tilesetTiles          :: Map LocalId Tile
                          -- ^ Tiles (optional)
-                       } deriving (Generic, Show)
+                       } deriving (Eq, Generic, Show)
 
 newtype TransitiveTilesetMap = TransitiveTilesetMap (Map LocalId Value)
   deriving (Show, Eq, Generic, FromJSON)
@@ -224,6 +276,25 @@ instance FromJSON Tileset where
                                    <*> (parseTiles o          <|> pure mempty)
   parseJSON invalid = typeMismatch "Tileset" invalid
 
+instance ToJSON Tileset where
+  toJSON Tileset{..} = object [ "firstgid"       .= tilesetFirstgid
+                              , "image"          .= tilesetImage
+                              , "name"           .= tilesetName
+                              , "tilewidth"      .= tilesetTilewidth
+                              , "tileheight"     .= tilesetTileheight
+                              , "imagewidth"     .= tilesetImagewidth
+                              , "imageheight"    .= tilesetImageheight
+                              , "properties"     .= tilesetProperties
+                              , "propertytypes"  .= tilesetPropertytypes
+                              , "margin"         .= tilesetMargin
+                              , "spacing"        .= tilesetSpacing
+                              , "tileproperties" .= tilesetTileproperties
+                              , "terrains"       .= tilesetTerrains
+                              , "columns"        .= tilesetColumns
+                              , "tilecount"      .= tilesetTilecount
+                              , "tiles"          .= tilesetTiles
+                              ]
+
 
 -- | The full monty.
 data Tiledmap = Tiledmap { tiledmapVersion         :: Float
@@ -252,8 +323,7 @@ data Tiledmap = Tiledmap { tiledmapVersion         :: Float
                            -- ^ String key-value pairs
                          , tiledmapNextobjectid    :: Int
                            -- ^ Auto-increments for each placed object
-                         } deriving (Generic, Show)
-
+                         } deriving (Eq, Generic, Show)
 
 instance FromJSON Tiledmap where
   parseJSON (A.Object o) = Tiledmap <$>  o .: "version"
@@ -270,6 +340,22 @@ instance FromJSON Tiledmap where
                                     <*> (o .: "properties"      <|> pure mempty)
                                     <*>  o .: "nextobjectid"
   parseJSON invalid = typeMismatch "Tiledmap" invalid
+
+instance ToJSON Tiledmap where
+  toJSON Tiledmap{..} = object [ "version"         .= tiledmapVersion
+                               , "tiledversion"    .= tiledmapTiledversion
+                               , "width"           .= tiledmapWidth
+                               , "height"          .= tiledmapHeight
+                               , "tilewidth"       .= tiledmapTilewidth
+                               , "tileheight"      .= tiledmapTileheight
+                               , "orientation"     .= tiledmapOrientation
+                               , "layers"          .= tiledmapLayers
+                               , "tilesets"        .= tiledmapTilesets
+                               , "backgroundcolor" .= tiledmapBackgroundcolor
+                               , "renderorder"     .= tiledmapRenderorder
+                               , "properties"      .= tiledmapProperties
+                               , "nextobjectid"    .= tiledmapNextobjectid
+                               ]
 
 
 -- | Load a Tiled map from the given 'FilePath'.
