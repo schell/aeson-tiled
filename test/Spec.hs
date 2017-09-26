@@ -15,13 +15,9 @@ files = [ "maps/example.json"
 
 main :: IO ()
 main = hspec $ forM_ files $ \file ->
-  describe ("With " ++ show file) $ do
-    it "loading should produce a 'Right Tiledmap{..}'" $
-      (loadTiledmap file >>=) . flip shouldSatisfy $ \case
-        (Right _) -> True
-        _         -> False
+  describe ("With " ++ show file) $
     it "loading and encoding and decoding should end up with the same Tiledmap" $
-      loadTiledmap "example.json" >>= \case
+      loadTiledmap file >>= \case
         Right tm -> do
           let bs = encode tm
           eitherDecode bs `shouldBe` Right tm
