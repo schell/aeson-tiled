@@ -5,8 +5,16 @@ import Control.Monad (forM_)
 
 import Data.Aeson.Tiled
 
+files :: [FilePath]
+files = [ "maps/example.json"
+        , "maps/test1.json"
+        , "maps/test2.json"
+        , "maps/test3.json"
+        , "maps/test4.json"
+        ]
+
 main :: IO ()
-main = hspec $ forM_ ["example.json"] $ \file ->
+main = hspec $ forM_ files $ \file ->
   describe ("With " ++ show file) $ do
     it "loading should produce a 'Right Tiledmap{..}'" $
       (loadTiledmap file >>=) . flip shouldSatisfy $ \case
