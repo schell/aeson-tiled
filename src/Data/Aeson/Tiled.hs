@@ -2,6 +2,12 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
+-- | This module provides Haskell types for Tiled's JSON exports, which you can
+-- read about at http://doc.mapeditor.org/en/latest/reference/json-map-format/.
+-- That said - as of the writing of this module the JSON documentation does not
+-- cover some of the types and records that are available in the format. For
+-- those you should read the TMX documentation at
+-- http://doc.mapeditor.org/en/latest/reference/tmx-map-format/
 module Data.Aeson.Tiled
   ( -- * Tiled map editor types, their aeson instances and map loading
     module Data.Aeson.Tiled
@@ -23,10 +29,12 @@ import           Data.Vector                (Vector)
 import           GHC.Generics               (Generic)
 
 
+-- | A globally indexed identifier.
 newtype GlobalId = GlobalId { unGlobalId :: Int }
   deriving (Ord, Eq, Enum, Num, Generic, Show, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 
+-- | A locally indexed identifier.
 newtype LocalId = LocalId { unLocalId :: Int }
   deriving (Ord, Eq, Enum, Num, Generic, Show, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
