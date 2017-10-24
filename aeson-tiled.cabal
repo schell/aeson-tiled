@@ -1,5 +1,5 @@
 name:                aeson-tiled
-version:             0.1.0.0
+version:             0.0.0.1
 synopsis:            Aeson instances for the Tiled map editor.
 description:         The mighty Tiled 2d map editor is an open source
                      app for creating tile based level maps. This package provides
