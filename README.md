@@ -1,5 +1,6 @@
 # aeson-tiled
 [![Build Status](https://travis-ci.org/schell/aeson-tiled.svg?branch=master)](https://travis-ci.org/schell/aeson-tiled)
+[![Build Status](https://ci.appveyor.com/api/projects/status/github/schell/aeson-tiled)]((https://ci.appveyor.com/api/projects/status/github/schell/aeson-tiled))
 [![Hackage](https://img.shields.io/hackage/v/aeson-tiled.svg)](https://hackage.haskell.org/package/aeson-tiled)
 
 `aeson-tiled` is the spiritual successor to `htiled`. `htiled` uses `hxt` which relies
