@@ -20,7 +20,7 @@ library
   exposed-modules:     Data.Aeson.Tiled
   build-depends:       base       >= 4.7 && < 5
                      , bytestring >= 0.10
-                     , aeson      >= 1.1
+                     , aeson      >= 1.0
                      , containers >= 0.5
                      , text       >= 1.2
                      , vector     >= 0.11
