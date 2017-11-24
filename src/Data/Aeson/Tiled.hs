@@ -24,8 +24,10 @@ import           Data.Aeson.Types           (Parser, typeMismatch)
 import qualified Data.ByteString.Lazy.Char8 as C8
 import           Data.Map                   (Map)
 import qualified Data.Map                   as M
+import           Data.Maybe                 (fromMaybe)
 import           Data.Text                  (Text)
 import           Data.Vector                (Vector)
+import           GHC.Exts                   (fromList, toList)
 import           GHC.Generics               (Generic)
 
 
@@ -39,11 +41,42 @@ newtype LocalId = LocalId { unLocalId :: Int }
   deriving (Ord, Eq, Enum, Num, Generic, Show, FromJSON, ToJSON, FromJSONKey, ToJSONKey)
 
 
+data XYPair a = XYPair a a
+
+instance FromJSON a => FromJSON (XYPair a) where
+  parseJSON (A.Object o) =
+    XYPair <$> o .: "x"
+           <*> o .: "y"
+  parseJSON invalid = typeMismatch "Object" invalid
+
+instance ToJSON a => ToJSON (XYPair a) where
+  toJSON (XYPair x y) =
+    object [ "x" .= x
+           , "y" .= y
+           ]
+
+fromXYPair :: XYPair a -> (a, a)
+fromXYPair (XYPair x y) = (x, y)
+
+toXYPair :: (a, a) -> XYPair a
+toXYPair (x, y) = XYPair x y
+
+omitNulls :: Value -> Value
+omitNulls (A.Object hs) = A.Object
+                        . fromList
+                        . filter ((/= Null) . snd)
+                        $ toList hs
+omitNulls x = x
+
+parseDefault :: FromJSON a => A.Object -> Text -> a -> Parser a
+parseDefault o s d = fromMaybe d <$> o .:? s
+
+
 data Object = Object { objectId         :: Int
                        -- ^ Incremental id - unique across all objects
-                     , objectWidth      :: Int
+                     , objectWidth      :: Double
                        -- ^ Width in pixels. Ignored if using a gid.
-                     , objectHeight     :: Int
+                     , objectHeight     :: Double
                        -- ^ Height in pixels. Ignored if using a gid.
                      , objectName       :: String
                        -- ^ String assigned to name field in editor
@@ -53,19 +86,19 @@ data Object = Object { objectId         :: Int
                        -- ^ String key-value pairs
                      , objectVisible    :: Bool
                        -- ^ Whether object is shown in editor.
-                     , objectX          :: Int
+                     , objectX          :: Double
                        -- ^ x coordinate in pixels
-                     , objectY          :: Int
+                     , objectY          :: Double
                        -- ^ y coordinate in pixels
                      , objectRotation   :: Float
                        -- ^ Angle in degrees clockwise
-                     , objectGid        :: GlobalId
+                     , objectGid        :: Maybe GlobalId
                        -- ^ GID, only if object comes from a Tilemap
                      , objectEllipse    :: Bool
                        -- ^ Used to mark an object as an ellipse
-                     , objectPolygon    :: Vector (Int, Int)
+                     , objectPolygon    :: Maybe (Vector (Double, Double))
                        -- ^ A list of x,y coordinates in pixels
-                     , objectPolyline   :: Vector (Int, Int)
+                     , objectPolyline   :: Maybe (Vector (Double, Double))
                        -- ^ A list of x,y coordinates in pixels
                      , objectText       :: Map Text Text
                        -- ^ String key-value pairs
@@ -77,40 +110,41 @@ instance FromJSON Object where
                                   <*> o .: "height"
                                   <*> o .: "name"
                                   <*> o .: "type"
-                                  <*> o .: "properties"
+                                  <*> parseDefault o "properties" M.empty
                                   <*> o .: "visible"
                                   <*> o .: "x"
                                   <*> o .: "y"
                                   <*> o .: "rotation"
-                                  <*> o .: "gid"
-                                  <*> o .: "ellipse"
-                                  <*> o .: "polygon"
-                                  <*> o .: "polyline"
-                                  <*> o .: "text"
+                                  <*> o .:? "gid"
+                                  <*> parseDefault o "ellipse" False
+                                  <*> (fmap . fmap . fmap) fromXYPair (o .:? "polygon")
+                                  <*> (fmap . fmap . fmap) fromXYPair (o .:? "polyline")
+                                  <*> parseDefault o "text" M.empty
   parseJSON invalid = typeMismatch "Object" invalid
 
 instance ToJSON Object where
-  toJSON Object{..} = object [ "id"         .= objectId
-                             , "width"      .= objectWidth
-                             , "height"     .= objectHeight
-                             , "name"       .= objectName
-                             , "type"       .= objectType
-                             , "properties" .= objectProperties
-                             , "visible"    .= objectVisible
-                             , "x"          .= objectX
-                             , "y"          .= objectY
-                             , "rotation"   .= objectRotation
-                             , "gid"        .= objectGid
-                             , "ellipse"    .= objectEllipse
-                             , "polygon"    .= objectPolygon
-                             , "polyline"   .= objectPolyline
-                             , "text"       .= objectText
-                             ]
+  toJSON Object{..} = omitNulls $
+    object [ "id"         .= objectId
+           , "width"      .= objectWidth
+           , "height"     .= objectHeight
+           , "name"       .= objectName
+           , "type"       .= objectType
+           , "properties" .= objectProperties
+           , "visible"    .= objectVisible
+           , "x"          .= objectX
+           , "y"          .= objectY
+           , "rotation"   .= objectRotation
+           , "gid"        .= objectGid
+           , "ellipse"    .= objectEllipse
+           , "polygon"    .= (fmap . fmap) toXYPair objectPolygon
+           , "polyline"   .= (fmap . fmap) toXYPair objectPolyline
+           , "text"       .= objectText
+           ]
 
 
-data Layer = Layer { layerWidth      :: Int
+data Layer = Layer { layerWidth      :: Double
                      -- ^ Column count. Same as map width for fixed-size maps.
-                   , layerHeight     :: Int
+                   , layerHeight     :: Double
                      -- ^ Row count. Same as map height for fixed-size maps.
                    , layerName       :: String
                      -- ^ Name assigned to this layer
@@ -118,9 +152,9 @@ data Layer = Layer { layerWidth      :: Int
                      -- ^ “tilelayer”, “objectgroup”, or “imagelayer”
                    , layerVisible    :: Bool
                      -- ^ Whether layer is shown or hidden in editor
-                   , layerX          :: Int
+                   , layerX          :: Double
                      -- ^ Horizontal layer offset in tiles. Always 0.
-                   , layerY          :: Int
+                   , layerY          :: Double
                      -- ^ Vertical layer offset in tiles. Always 0.
                    , layerData       :: Maybe (Vector GlobalId)
                      -- ^ Array of GIDs. tilelayer only.
@@ -143,26 +177,27 @@ instance FromJSON Layer where
                                  <*>  o .: "x"
                                  <*>  o .: "y"
                                  <*> (o .: "data"       <|> pure Nothing)
-                                 <*> (o .: "objects"    <|> pure Nothing)
+                                 <*> o .:? "objects"
                                  <*> (o .: "properties" <|> pure mempty)
                                  <*>  o .: "opacity"
                                  <*> (o .: "draworder"  <|> pure "topdown")
   parseJSON invalid = typeMismatch "Layer" invalid
 
 instance ToJSON Layer where
-  toJSON Layer{..} = object [ "width"      .= layerWidth
-                            , "height"     .= layerHeight
-                            , "name"       .= layerName
-                            , "type"       .= layerType
-                            , "visible"    .= layerVisible
-                            , "x"          .= layerX
-                            , "y"          .= layerY
-                            , "data"       .= layerData
-                            , "objects"    .= layerObjects
-                            , "properties" .= layerProperties
-                            , "opacity"    .= layerOpacity
-                            , "draworder"  .= layerDraworder
-                            ]
+  toJSON Layer{..} = omitNulls $
+    object [ "width"      .= layerWidth
+           , "height"     .= layerHeight
+           , "name"       .= layerName
+           , "type"       .= layerType
+           , "visible"    .= layerVisible
+           , "x"          .= layerX
+           , "y"          .= layerY
+           , "data"       .= layerData
+           , "objects"    .= layerObjects
+           , "properties" .= layerProperties
+           , "opacity"    .= layerOpacity
+           , "draworder"  .= layerDraworder
+           ]
 
 
 data Terrain = Terrain { terrainName :: String
@@ -313,9 +348,9 @@ data Tiledmap = Tiledmap { tiledmapVersion         :: Float
                            -- ^ Number of tile columns
                          , tiledmapHeight          :: Int
                            -- ^ Number of tile rows
-                         , tiledmapTilewidth       :: Int
+                         , tiledmapTilewidth       :: Double
                            -- ^ Map grid width.
-                         , tiledmapTileheight      :: Int
+                         , tiledmapTileheight      :: Double
                            -- ^ Map grid height.
                          , tiledmapOrientation     :: String
                            -- ^ Orthogonal, isometric, or staggered
