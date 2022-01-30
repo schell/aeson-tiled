@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -68,7 +69,11 @@ omitNulls (A.Object hs) = A.Object
                         $ toList hs
 omitNulls x = x
 
+#if MIN_VERSION_aeson(2,0,0)
+parseDefault :: FromJSON a => A.Object -> A.Key -> a -> Parser a
+#else
 parseDefault :: FromJSON a => A.Object -> Text -> a -> Parser a
+#endif
 parseDefault o s d = fromMaybe d <$> o .:? s
 
 
