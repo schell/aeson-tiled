@@ -224,12 +224,12 @@ data Frame = Frame { frameDuration :: Int
 
 instance FromJSON Frame where
   parseJSON (A.Object o) = Frame <$> o .: "duration"
-                                 <*> o .: "tileId"
+                                 <*> o .: "tileid"
   parseJSON invalid = typeMismatch "Frame" invalid
 
 instance ToJSON Frame where
   toJSON Frame{..} = object [ "duration" .= frameDuration
-                            , "tileId"   .= frameTileId
+                            , "tileid"   .= frameTileId
                             ]
 
 
