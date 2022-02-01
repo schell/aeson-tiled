@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP                        #-}
 {-# LANGUAGE DeriveGeneric              #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
@@ -68,7 +69,11 @@ omitNulls (A.Object hs) = A.Object
                         $ toList hs
 omitNulls x = x
 
+#if MIN_VERSION_aeson(2,0,0)
+parseDefault :: FromJSON a => A.Object -> A.Key -> a -> Parser a
+#else
 parseDefault :: FromJSON a => A.Object -> Text -> a -> Parser a
+#endif
 parseDefault o s d = fromMaybe d <$> o .:? s
 
 
@@ -78,9 +83,9 @@ data Object = Object { objectId         :: Int
                        -- ^ Width in pixels. Ignored if using a gid.
                      , objectHeight     :: Double
                        -- ^ Height in pixels. Ignored if using a gid.
-                     , objectName       :: String
+                     , objectName       :: Text
                        -- ^ String assigned to name field in editor
-                     , objectType       :: String
+                     , objectType       :: Text
                        -- ^ String assigned to type field in editor
                      , objectProperties :: Map Text Text
                        -- ^ String key-value pairs
@@ -146,9 +151,9 @@ data Layer = Layer { layerWidth      :: Double
                      -- ^ Column count. Same as map width for fixed-size maps.
                    , layerHeight     :: Double
                      -- ^ Row count. Same as map height for fixed-size maps.
-                   , layerName       :: String
+                   , layerName       :: Text
                      -- ^ Name assigned to this layer
-                   , layerType       :: String
+                   , layerType       :: Text -- TODO: LayerType
                      -- ^ “tilelayer”, “objectgroup”, or “imagelayer”
                    , layerVisible    :: Bool
                      -- ^ Whether layer is shown or hidden in editor
@@ -164,7 +169,7 @@ data Layer = Layer { layerWidth      :: Double
                      -- ^ string key-value pairs.
                    , layerOpacity    :: Float
                      -- ^ Value between 0 and 1
-                   , layerDraworder  :: String
+                   , layerDraworder  :: Text -- TODO: DrawOrder
                      -- ^ “topdown” (default) or “index”. objectgroup only.
                    } deriving (Eq, Generic, Show)
 
@@ -200,7 +205,7 @@ instance ToJSON Layer where
            ]
 
 
-data Terrain = Terrain { terrainName :: String
+data Terrain = Terrain { terrainName :: Text
                          -- ^ Name of terrain
                        , terrainTile :: LocalId
                          -- ^ Local ID of tile representing terrain
@@ -257,9 +262,9 @@ instance ToJSON Tile where
 
 data Tileset = Tileset { tilesetFirstgid       :: GlobalId
                          -- ^ GID corresponding to the first tile in the set
-                       , tilesetImage          :: String
+                       , tilesetImage          :: FilePath
                          -- ^ Image used for tiles in this set
-                       , tilesetName           :: String
+                       , tilesetName           :: Text
                          -- ^ Name given to this tileset
                        , tilesetTilewidth      :: Int
                          -- ^ Maximum width of tiles in this set
@@ -338,11 +343,47 @@ instance ToJSON Tileset where
                               , "tiles"          .= tilesetTiles
                               ]
 
+data Version
+  = VersionFloat Float
+  | VersionText Text
+  deriving (Eq, Ord, Show, Generic)
+
+instance FromJSON Version where
+  parseJSON v =
+    fmap VersionFloat (parseJSON v) <|>
+    fmap VersionText (parseJSON v)
+
+instance ToJSON Version where
+  toJSON version = case version of
+    VersionFloat f -> toJSON f
+    VersionText t  -> toJSON t
+
+data Orientation
+  = Orthogonal
+  | Isometric
+  | Staggered
+  | Orientation Text
+  deriving (Eq, Ord, Show, Generic)
+
+instance FromJSON Orientation where
+  parseJSON = withText "Orientation" $ \t ->
+    case t of
+      "orthogonal" -> pure Orthogonal
+      "isometric"  -> pure Isometric
+      "staggered"  -> pure Staggered
+      _otherwise   -> pure $ Orientation t
+
+instance ToJSON Orientation where
+  toJSON o = toJSON $ case o of
+    Orthogonal    -> "orthogonal"
+    Isometric     -> "isometric"
+    Staggered     -> "staggered"
+    Orientation t -> t
 
 -- | The full monty.
-data Tiledmap = Tiledmap { tiledmapVersion         :: Float
+data Tiledmap = Tiledmap { tiledmapVersion         :: Version
                            -- ^ The JSON format version
-                         , tiledmapTiledversion    :: String
+                         , tiledmapTiledversion    :: Version
                            -- ^ The Tiled version used to save the file
                          , tiledmapWidth           :: Int
                            -- ^ Number of tile columns
@@ -352,15 +393,15 @@ data Tiledmap = Tiledmap { tiledmapVersion         :: Float
                            -- ^ Map grid width.
                          , tiledmapTileheight      :: Double
                            -- ^ Map grid height.
-                         , tiledmapOrientation     :: String
+                         , tiledmapOrientation     :: Orientation
                            -- ^ Orthogonal, isometric, or staggered
                          , tiledmapLayers          :: Vector Layer
                            -- ^ Array of Layers
                          , tiledmapTilesets        :: Vector Tileset
                            -- ^ Array of Tilesets
-                         , tiledmapBackgroundcolor :: Maybe String
+                         , tiledmapBackgroundcolor :: Maybe Text
                            -- ^ Hex-formatted color (#RRGGBB or #AARRGGBB) (optional)
-                         , tiledmapRenderorder     :: String
+                         , tiledmapRenderorder     :: Text -- TODO: RenderOrder
                            -- ^ Rendering direction (orthogonal maps only)
                          , tiledmapProperties      :: Map Text Text
                            -- ^ String key-value pairs

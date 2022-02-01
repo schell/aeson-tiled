@@ -1,5 +1,5 @@
 name:                aeson-tiled
-version:             0.0.0.1
+version:             0.0.1.0
 synopsis:            Aeson instances for the Tiled map editor.
 description:         The mighty Tiled 2d map editor is an open source
                      app for creating tile based level maps. This package provides
@@ -20,9 +20,9 @@ library
   exposed-modules:     Data.Aeson.Tiled
   build-depends:       base       >= 4.7 && < 5
                      , bytestring >= 0.10 && < 1
-                     , aeson      >= 1.0 && < 2
+                     , aeson      >= 1.0 && < 3
                      , containers >= 0.5 && < 1
-                     , text       >= 1.2 && < 2
+                     , text       >= 1.2 && < 3
                      , vector     >= 0.11 && < 1
   default-language:    Haskell2010
 
