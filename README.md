@@ -1,3 +1,5 @@
+# [This repo has moved to haskell-game](https://github.com/haskell-game/aeson-tiled) 
+
 # aeson-tiled
 [![Build Status](https://travis-ci.org/schell/aeson-tiled.svg?branch=master)](https://travis-ci.org/schell/aeson-tiled)
 [![Build Status](https://ci.appveyor.com/api/projects/status/github/schell/aeson-tiled)]((https://ci.appveyor.com/api/projects/status/github/schell/aeson-tiled))
